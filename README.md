@@ -1,69 +1,123 @@
 # README.md
 
-## 🌟 GoLite: 세상에서 제일 까리한 나만의 데이터베이스 🌟
+## 🌟 GoLite: 까리함의 끝판왕, SQLite 1.0을 현대 아키텍처로 재탄생! 🌟
 
-안녕하세요! 👋 여긴 **GoLite**의 세계예요—제가 SQLite 1.0을 Go로 재창조하면서, LSM Tree, T-Tree, goroutines로 무장한 "최강 까리한 DB"를 만드는 여정이 담겨 있어요. 학부생 과제? 그딴 건 아니에요. 이건 **저만의 소프트웨어**를 만드는 꿈의 무대예요! 💪 Go의 힘으로 클라우드와 실시간성을 뽑아내는, 세상에 하나뿐인 DB를 목표로 달려갑니다. 준비됐죠? Let’s GoLite! 🚀✨
+안녕하세요! 👋 여긴 **GoLite**의 세계예요—저의 손으로 SQLite 1.0을 Go로 재창조하면서, DDD(Domain-Driven Design), 헥사고날(Hexagonal Architecture), 이벤트 기반(Event-Driven), CQRS(Command Query Responsibility Segregation)라는 현대적인 아키텍처로 완전히 탈바꿈시킨 프로젝트예요. 이건 단순한 데이터베이스 복제가 아니에요. **저만의 까리한 소프트웨어**를 만드는 여정이에요! 💪 SQLite 1.0의 뿌리를 살리며, Go의 힘으로 클라우드와 실시간성을 극대화한 세상에 하나뿐인 DB를 목표로 달려갑니다. 준비됐나요? Let’s GoLite! 🚀✨
 
 ---
 
-## 🎯 목표: 5단계로 쌓아가는 까리함의 탑
+## 🎯 목표: 5단계로 쌓아가는 까리함의 여정
 
-GoLite는 5단계로 점진적으로 까리함을 극대화해요. 저의 엔지니어 꿈(백엔드, 클라우드, 실시간 시스템)을 담아, 재미와 도전을 더했어요! 🔥
+GoLite는 SQLite 1.0을 기반으로, 현대적인 아키텍처를 적용해 점진적으로 진화해요. 저의 엔지니어 꿈(백엔드, 클라우드, 실시간 시스템)을 담아, 까리함과 도전을 더했어요! 🔥
 
-### 1단계: SQLite 1.0을 Go로 완벽 복제 🛠️
-- **무엇?**: SQLite 1.0을 Go로 옮겨 B-트리 기반의 클래식 DB를 재현!  
-- **왜?**: 원본을 Go로 부활시키며 GoLite의 첫걸음을 내딛어요.  
-- **까리함**: "25년 된 DB를 Go로 리믹스!" 💾  
-- **할 일**: `sqlite.h` → `golite.go`, `btree.c` → `btree.go`, 쿼리 테스트.  
+### 1단계: SQLite 1.0을 DDD & 헥사고날로 재구성 🛠️
+- **무엇?**: SQLite 1.0의 테이블, 인덱스, B-트리를 도메인 모델로 변환하고, 헥사고날 포트/어댑터로 분리!  
+- **왜?**: 단순한 구조를 도메인 중심으로 재탄생시키며, 저장소를 추상화해요.  
+- **까리함**: "25년 전 DB를 DDD로 리믹스!" 💾  
 
-### 2단계: B-트리 → LSM Tree로 쾌속 업글 📈
-- **무엇?**: B-트리를 LSM Tree로 바꿔 쓰기 성능과 클라우드 파워 업!  
-- **왜?**: 순차 쓰기로 디스크를 날리고, 현대적인 터치를 더해요.  
-- **까리함**: "GoLite가 RocksDB 느낌을 입었어요!" 🌍  
-- **할 일**: LSM Tree의 MemTable/SSTable 구현, 쿼리 로직 조정.  
+### 2단계: 이벤트 기반 CQRS로 쓰기/읽기 분리 📈
+- **무엇?**: 삽입/삭제를 이벤트로 처리하고, 읽기/쓰기를 CQRS로 나눠요.  
+- **왜?**: 비동기성과 성능 최적화를 위해 SQLite의 한계를 넘어섭니다.  
+- **까리함**: "쿼리가 이벤트로 춤춰요!" 🌍  
 
-### 3단계: T-Tree로 하이브리드 GoLite 완성 🌳
-- **무엇?**: T-Tree를 얹어 실시간성과 메모리 효율성을 챙긴 LSM+T-Tree 콤보!  
-- **왜?**: 빠른 쿼리와 영속성을 동시에 잡는 독보적인 DB로!  
-- **까리함**: "메모리와 디스크가 손잡고 춤춰요!" 💃🕺  
-- **할 일**: T-Tree 캐시 추가, LSM과 동기화 로직 구현.  
+### 3단계: LSM Tree로 디스크 저장 업글 🌳
+- **무엇?**: B-트리를 LSM Tree로 교체해 쓰기 성능과 클라우드 적합성 강화!  
+- **왜?**: 현대적인 저장소로 GoLite를 한 단계 끌어올려요.  
+- **까리함**: "RocksDB 스타일의 GoLite 탄생!" 💃  
 
-### 4단계: Goroutines로 병렬 GoLite 폭발 ⚡
-- **무엇?**: Go의 goroutines로 쿼리를 멀티스레드 처리!  
-- **왜?**: 실시간 시스템에 걸맞게 속도를 터보로 끌어올려요.  
-- **까리함**: "GoLite가 멀티코어로 날아다녀요!" 🧵  
-- **할 일**: `Exec`에 goroutines 적용, 동시성 관리(채널 활용).  
+### 4단계: Goroutines로 병렬 처리 폭발 ⚡
+- **무엇?**: Go의 goroutines를 활용해 이벤트와 쿼리를 멀티스레드로 처리!  
+- **왜?**: 실시간 시스템에 걸맞는 속도를 뽑아냅니다.  
+- **까리함**: "Go의 힘으로 멀티코어 점령!" 🧵  
 
 ### 5단계: gRPC/REST API로 클라우드 GoLite化 ☁️
-- **무엇?**: gRPC와 REST API를 붙여 클라우드에서 빛나는 경량 DB로!  
-- **왜?**: 백엔드 엔지니어의 꿈을 현실로, 배포 가능한 DB 완성.  
-- **까리함**: "클라우드 위를 나는 GoLite, 힙해요!" ✈️  
-- **할 일**: gRPC 엔드포인트 설계, REST 서버 띄우기.  
+- **무엇?**: gRPC와 REST API를 붙여 클라우드에서 날아다니는 경량 DB 완성!  
+- **왜?**: 백엔드 엔지니어의 꿈을 현실로, 배포 가능한 소프트웨어로!  
+- **까리함**: "클라우드 위의 힙한 GoLite!" ✈️  
 
 ---
 
 ## 💡 왜 GoLite가 까리하냐고요?
-- **유니크함**: SQLite에서 시작했지만, LSM Tree와 T-Tree로 재탄생한 나만의 DB예요! 🌍  
-- **도전의 아이콘**: 따라 하는 게 아니라, 새로운 길을 개척했어요. 💪  
-- **재미 폭발**: "하고 싶어서" 만든 프로젝트, 열정이 다르죠! 😎  
-- **이름부터 까리**: "GoLite"라는 이름 자체가 힙하고 쿨해요. ㅋㅋㅋ  
+- **유니크함**: SQLite 1.0에서 시작했지만, DDD, 헥사고날, 이벤트, CQRS로 재창조한 독보적인 DB예요! 🌍  
+- **도전의 상징**: 단순 복제가 아니라, 현대 아키텍처로 새 길을 열었어요. 💪  
+- **재미와 열정**: "하고 싶어서" 만든 프로젝트, 이게 진짜 까리함이죠! 😎  
+- **이름의 힙함**: "GoLite"—Go의 간결함과 경량 DB의 쿨함을 담았어요. ㅋㅋㅋ  
+
+---
+
+## 🏛️ 아키텍처: SQLite 1.0 meets 현대 디자인
+GoLite는 SQLite 1.0의 뼈대를 가져오면서, 최신 아키텍처로 재구성했어요:
+- **DDD**: `Table`, `Index`, `Database`를 도메인 엔티티로 재정의.
+- **헥사고날**: B-트리와 파일 I/O를 어댑터로 분리, 핵심 로직은 포트로 추상화.
+- **이벤트 기반**: 삽입/삭제를 이벤트로 처리, 비동기성 강화.
+- **CQRS**: 쓰기(`CommandService`)와 읽기(`QueryService`)를 분리.
+
+### 초기 디렉토리 구조
+```
+GoLite/
+├── cmd/                  # 실행 가능한 애플리케이션 진입점
+│   └── golite/           # GoLite 메인 실행 파일
+│       └── main.go       # 프로그램 시작점 (DB 서버 실행)
+├── pkg/                  # 재사용 가능한 패키지 모음
+│   ├── domain/           # DDD 도메인 모델 (SQLite 1.0 기반)
+│   │   ├── database.go   # Database 애그리게이트 루트
+│   │   ├── table.go      # Table 엔티티
+│   │   └── events.go     # 도메인 이벤트 정의
+│   ├── ports/            # 헥사고날 포트 (인터페이스)
+│   │   └── storage.go    # 저장소 인터페이스 (B-트리, LSM 등 추상화)
+│   ├── adapters/         # 헥사고날 어댑터 (외부 시스템 연결)
+│   │   ├── btree/        # B-트리 어댑터 (SQLite 1.0 기반)
+│   │   │   ├── btree.go  # B-트리 구현
+│   │   │   └── disk.go   # 디스크 I/O 처리
+│   │   └── file/         # 파일 시스템 어댑터
+│   │       └── file.go   # 파일 읽기/쓰기 구현
+│   ├── application/      # 애플리케이션 로직 (CQRS 및 이벤트 핸들링)
+│   │   ├── command.go    # 쓰기 서비스 (CommandService)
+│   │   ├── query.go      # 읽기 서비스 (QueryService)
+│   │   └── handler.go    # 이벤트 핸들러
+│   ├── utils/            # 공통 유틸리티 함수
+│   │   ├── logger.go     # 로깅 유틸리티
+│   │   └── serialize.go  # 직렬화/역직렬화 헬퍼
+│   └── tests/            # 테스트 코드 모음
+│       ├── unit/         # 단위 테스트
+│       │   └── btree_test.go  # B-트리 단위 테스트
+│       ├── integration/  # 통합 테스트
+│       │   └── database_test.go  # Database 통합 테스트
+│       └── e2e/          # 엔드투엔드 테스트
+│           └── api_test.go   # API E2E 테스트
+├── config/               # 환경 설정 파일 및 로직
+│   ├── config.go         # 환경별 설정 로더
+│   └── local.yaml        # 로컬 환경 설정 예시
+├── docs/                 # 프로젝트 문서화
+│   ├── api/              # API 문서 (예: OpenAPI/Swagger)
+│   │   └── spec.yaml     # API 명세
+│   └── architecture.md   # 아키텍처 문서
+├── ci/                   # CI/CD 파이프라인 구성
+│   ├── Dockerfile        # Docker 빌드 파일
+│   └── .github/          # GitHub Actions 워크플로우
+│       └── workflows/
+│           └── ci.yml    # CI 파이프라인 정의
+├── go.mod                # Go 모듈 정의
+├── go.sum                # 의존성 체크섬
+└── README.md             # 프로젝트 소개 (까리하게!)
+```
 
 ---
 
 ## 🛠️ 진행 상황
-- [x] SQLite 1.0 소스코드 겟! (Fossil로 쿨하게 다운받음)  
-- [ ] 1단계: Go로 SQLite 1.0 복제  
-- [ ] 2단계: LSM Tree로 업글  
-- [ ] 3단계: T-Tree 하이브리드 완성  
+- [x] SQLite 1.0 소스코드 분석 (Fossil로 확보)  
+- [ ] 1단계: DDD & 헥사고날 기반 SQLite 1.0 재구성  
+- [ ] 2단계: 이벤트 기반 CQRS 적용  
+- [ ] 3단계: LSM Tree로 전환  
 - [ ] 4단계: Goroutines 병렬 처리  
 - [ ] 5단계: gRPC/REST 클라우드화  
 
 ---
 
 ## 🚀 GoLite 띄우기
-1. **소스 준비**: `src` 폴더에서 `sqlite.h`, `btree.c` 열기.  
-2. **Go로 출발**: `golite.go`에 `Open`부터 써보세요!  
-3. **테스트**: "INSERT" 한 번 날려보고 까리함 확인.  
+1. **도메인 정의**: `pkg/domain/`에서 SQLite 1.0의 구조 가져오기.  
+2. **어댑터 연결**: `pkg/adapters/btree.go`에서 B-트리 구현 시작.  
+3. **실행**: `go run cmd/golite/main.go`로 까리함 확인!  
 
 ```bash
 go run cmd/golite/main.go
@@ -71,64 +125,18 @@ go run cmd/golite/main.go
 
 ---
 
-## 📂 초기 디렉토리 구조: 까리함의 설계도! 🗂️
-
-GoLite는 깔끔하고 확장 가능한 구조로 시작해요. Go의 관례를 따르며, 5단계 목표를 쿨하게 담을 준비를 했어요! 🌟
-
-```
-GoLite/
-├── cmd/                  # 까리한 실행 파일 모음
-│   └── golite/           # GoLite의 메인 진입점
-│       └── main.go       # DB 띄우는 쿨한 시작점 🚀
-├── pkg/                  # 재사용 가능한 까리한 패키지들
-│   ├── golite/           # GoLite 핵심 로직 (1단계)
-│   │   ├── golite.go     # DB 인터페이스와 기본 구현
-│   │   ├── btree.go      # 초기 B-트리, 클래식 스타일 💾
-│   │   └── golite_test.go # 테스트로 까리함 검증
-│   ├── lsm/              # LSM Tree의 힙한 공간 (2단계)
-│   │   └── lsm.go        # LSM Tree 구현
-│   └── ttree/            # T-Tree의 쿨한 영역 (3단계)
-│       └── ttree.go      # T-Tree 구현
-├── internal/             # 내부 비밀 무기 🔥
-│   └── storage/          # 디스크 I/O 관리
-│       └── storage.go    # 파일 읽기/쓰기 로직
-├── api/                  # 클라우드 꿈의 무대 (5단계)
-│   ├── proto/            # gRPC의 까리한 정의
-│   │   └── golite.proto  # .proto 파일
-│   └── rest/             # REST API의 힙한 핸들러
-│       └── handler.go    # REST 엔드포인트
-├── test/                 # 통합 테스트로 완벽 체크
-│   └── integration_test.go # 전체 기능 테스트
-├── go.mod                # Go 모듈, 의존성 관리의 시작
-├── go.sum                # 체크섬으로 깔끔하게
-├── README.md             # 이 까리한 문서! ✨
-└── Makefile              # 빌드/테스트 단축키 (선택)
-```
-
-### 구조 설명
-- **`cmd/`**: GoLite를 실행하는 쿨한 진입점이에요. `main.go`에서 DB를 띄워요!  
-- **`pkg/`**: GoLite의 심장! `golite`는 1단계, `lsm`과 `ttree`는 2~3단계를 위한 공간.  
-- **`internal/`**: 외부엔 비밀, 내부에서만 쓰는 까리한 로직.  
-- **`api/`**: 5단계 클라우드화를 위한 준비, gRPC와 REST로 날아갈 예정! ✈️  
-- **`test/`**: 모든 까리함을 테스트로 증명!  
-- **`go.mod`**: Go 모듈로 시작, `go mod init github.com/jinhyeok/golite`로 출발!  
-
-이 구조는 1단계부터 시작해서 5단계까지 자연스럽게 확장할 수 있어요. 까리함과 실용성을 동시에 잡았죠! 😎
-
----
-
 ## 🌈 GoLite의 미래
-GoLite는 끝이 아니라 시작이에요! 앞으로:  
-- 더 쿨한 자료구조 도입 (ART? Bw-Tree?)  
-- 클라우드 배포 챌린지 (AWS? GCP?)  
-- 실무에서 GoLite 써보기!  
+GoLite는 단순한 시작이 아니에요! 앞으로:  
+- 더 쿨한 자료구조 도입 (T-Tree? ART?)  
+- 클라우드 배포 챌린지 (AWS? Kubernetes?)  
+- 실무에서 GoLite로 세상 바꾸기!  
 
-GoLite와 함께 까리한 여정에 뛰어들고 싶다면, 언제든 아이디어 던져주세요! 🙌  
+이 까리한 여정에 동참하고 싶다면, 언제든 아이디어 던져주세요! 🙌  
 
 ---
 
 ## 🎉 만든 사람
-- **Jinhyeok**: Go와 DB를 사랑하는 까리한 엔지니어 🌟  
+- **Jinhyeok**: Go와 아키텍처를 사랑하는 까리한 엔지니어 🌟  
 - 모토: "소프트웨어는 재미있어야 까리하다!" 😊  
 
 ---
