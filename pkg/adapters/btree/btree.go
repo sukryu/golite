@@ -23,9 +23,9 @@ type BtConfig struct {
 
 // Btree represents a disk-based B-tree.
 type Btree struct {
-	degree     int          // Minimum degree (t)
-	length     int          // Total number of items in the tree
-	rootOffset int64        // Offset of the root node in the disk file
+	Degree     int          // Minimum degree (t)
+	Length     int          // Total number of items in the tree
+	RootOffset int64        // Offset of the root node in the disk file
 	file       *os.File     // Disk file handle
 	pageSize   int          // Page size in bytes
 	nextOffset int64        // Next available offset for new nodes
@@ -53,11 +53,17 @@ type Item struct {
 	Value string // Fixed as string for simplicity (interface{} 대신)
 }
 
+func (b *Btree) GetRootOffset() int64 {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+	return b.RootOffset
+}
+
 // GetLength returns the total number of items in the B-tree.
 func (b *Btree) GetLength() int {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
-	return b.length
+	return b.Length
 }
 
 // GetCacheSize returns the current number of nodes in the cache.
@@ -82,10 +88,10 @@ func NewBtree(file *os.File, config BtConfig) *Btree {
 		cacheSize = 0 // Disable caching if negative
 	}
 	b := &Btree{
-		degree:     degree,
+		Degree:     degree,
 		file:       file,
 		pageSize:   pageSize,
-		rootOffset: 0,
+		RootOffset: 0,
 		nextOffset: int64(pageSize),
 		threadSafe: config.ThreadSafe,
 		cache:      make(map[int64]*Node),
@@ -117,8 +123,8 @@ func (b *Btree) loadHeader() error {
 	if err := binary.Read(buf, binary.LittleEndian, &length); err != nil {
 		return nil // Partial header, treat as new
 	}
-	b.rootOffset = rootOffset
-	b.length = int(length)
+	b.RootOffset = rootOffset
+	b.Length = int(length)
 	b.nextOffset = int64(b.pageSize) // Reset if needed
 	if stat, err := b.file.Stat(); err == nil && stat.Size() > int64(b.pageSize) {
 		b.nextOffset = stat.Size() // Use file size for existing data
@@ -129,10 +135,10 @@ func (b *Btree) loadHeader() error {
 // saveHeader writes the root offset and length to the header page.
 func (b *Btree) saveHeader() error {
 	buf := bytes.NewBuffer(make([]byte, 0, b.pageSize))
-	if err := binary.Write(buf, binary.LittleEndian, b.rootOffset); err != nil {
+	if err := binary.Write(buf, binary.LittleEndian, b.RootOffset); err != nil {
 		return fmt.Errorf("failed to write root offset: %v", err)
 	}
-	if err := binary.Write(buf, binary.LittleEndian, int32(b.length)); err != nil {
+	if err := binary.Write(buf, binary.LittleEndian, int32(b.Length)); err != nil {
 		return fmt.Errorf("failed to write length: %v", err)
 	}
 	data := buf.Bytes()
@@ -248,7 +254,7 @@ func (b *Btree) Insert(key string, value interface{}) error {
 	if !ok {
 		return fmt.Errorf("value must be string")
 	}
-	if b.length == 0 {
+	if b.Length == 0 {
 		newNode := &Node{
 			items:           []Item{{Key: key, Value: valStr}},
 			childrenOffsets: nil,
@@ -258,8 +264,8 @@ func (b *Btree) Insert(key string, value interface{}) error {
 		if err := b.writeNode(newNode, offset); err != nil {
 			return err
 		}
-		b.rootOffset = offset
-		b.length++
+		b.RootOffset = offset
+		b.Length++
 		if err := b.saveHeader(); err != nil {
 			return err
 		}
@@ -267,11 +273,11 @@ func (b *Btree) Insert(key string, value interface{}) error {
 		return nil
 	}
 	// Read the root node.
-	root, err := b.readNode(b.rootOffset)
+	root, err := b.readNode(b.RootOffset)
 	if err != nil {
 		return err
 	}
-	if len(root.items) == 2*b.degree-1 {
+	if len(root.items) == 2*b.Degree-1 {
 		newRoot := &Node{
 			items:           []Item{},
 			childrenOffsets: []int64{root.offset},
@@ -287,14 +293,14 @@ func (b *Btree) Insert(key string, value interface{}) error {
 		if err := b.writeNode(newRoot, newRootOffset); err != nil {
 			return err
 		}
-		b.rootOffset = newRootOffset
+		b.RootOffset = newRootOffset
 		b.cacheNode(newRoot) // Cache the new root
 	} else {
 		if err := b.insertNonFull(root, key, valStr); err != nil {
 			return err
 		}
 	}
-	b.length++
+	b.Length++
 	if err := b.saveHeader(); err != nil { // Save updated metadata
 		return err
 	}
@@ -323,7 +329,7 @@ func (b *Btree) insertNonFull(n *Node, key string, value interface{}) error {
 	if err != nil {
 		return err
 	}
-	if len(child.items) == 2*b.degree-1 {
+	if len(child.items) == 2*b.Degree-1 {
 		if err := b.splitChild(n, i, child); err != nil {
 			return err
 		}
@@ -341,7 +347,7 @@ func (b *Btree) insertNonFull(n *Node, key string, value interface{}) error {
 
 // splitChild splits the full child node and adjusts the parent accordingly.
 func (b *Btree) splitChild(parent *Node, index int, child *Node) error {
-	t := b.degree
+	t := b.Degree
 	// Median value to move up.
 	median := child.items[t-1]
 	// Create new node for the second half of child.
@@ -381,10 +387,10 @@ func (b *Btree) Get(key string) (interface{}, error) {
 		b.mu.RLock()
 		defer b.mu.RUnlock()
 	}
-	if b.length == 0 {
+	if b.Length == 0 {
 		return nil, ports.ErrKeyNotFound
 	}
-	return b.searchValue(b.rootOffset, key)
+	return b.searchValue(b.RootOffset, key)
 }
 
 // searchValue recursively searches for a key starting from the node at the given offset.
@@ -412,22 +418,22 @@ func (b *Btree) Delete(key string) error {
 		b.mu.Lock()
 		defer b.mu.Unlock()
 	}
-	if b.length == 0 {
+	if b.Length == 0 {
 		return ports.ErrKeyNotFound
 	}
-	if err := b.deleteFromNode(b.rootOffset, key); err != nil {
+	if err := b.deleteFromNode(b.RootOffset, key); err != nil {
 		return err
 	}
 	// Adjust root if necessary.
-	root, err := b.readNode(b.rootOffset)
+	root, err := b.readNode(b.RootOffset)
 	if err != nil {
 		return err
 	}
 	if len(root.items) == 0 && !isLeaf(root) {
-		b.rootOffset = root.childrenOffsets[0]
+		b.RootOffset = root.childrenOffsets[0]
 		b.cacheNode(root)
 	}
-	b.length--
+	b.Length--
 	if err := b.saveHeader(); err != nil { // Save updated metadata
 		return err
 	}
@@ -457,7 +463,7 @@ func (b *Btree) deleteFromNode(offset int64, key string) error {
 		if err != nil {
 			return err
 		}
-		if len(leftChild.items) >= b.degree {
+		if len(leftChild.items) >= b.Degree {
 			pred, err := b.getPredecessor(leftChild)
 			if err != nil {
 				return err
@@ -472,7 +478,7 @@ func (b *Btree) deleteFromNode(offset int64, key string) error {
 		if err != nil {
 			return err
 		}
-		if len(rightChild.items) >= b.degree {
+		if len(rightChild.items) >= b.Degree {
 			succ, err := b.getSuccessor(rightChild)
 			if err != nil {
 				return err
@@ -498,7 +504,7 @@ func (b *Btree) deleteFromNode(offset int64, key string) error {
 	if err != nil {
 		return err
 	}
-	if len(child.items) < b.degree {
+	if len(child.items) < b.Degree {
 		if err := b.fill(n, idx); err != nil {
 			return err
 		}
@@ -571,13 +577,13 @@ func (b *Btree) fill(parent *Node, idx int) error {
 	}
 	if idx > 0 {
 		leftSibling, err := b.readNode(parent.childrenOffsets[idx-1])
-		if err == nil && len(leftSibling.items) >= b.degree {
+		if err == nil && len(leftSibling.items) >= b.Degree {
 			return b.borrowFromPrev(parent, idx)
 		}
 	}
 	if idx < len(parent.childrenOffsets)-1 {
 		rightSibling, err := b.readNode(parent.childrenOffsets[idx+1])
-		if err == nil && len(rightSibling.items) >= b.degree {
+		if err == nil && len(rightSibling.items) >= b.Degree {
 			return b.borrowFromNext(parent, idx)
 		}
 	}
