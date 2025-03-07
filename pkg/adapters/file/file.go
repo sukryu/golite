@@ -29,9 +29,14 @@ type File struct {
 	compactChan chan struct{}
 	stopChan    chan struct{}
 	wg          sync.WaitGroup
-	buffer      []byte     // WAL buffer
-	bufferMu    sync.Mutex // Buffer-specific mutex
-	flushSize   int        // Buffer flush size (e.g., 4MB)
+	walChan     chan walEntry // Channel for async WAL writes
+	buffer      []byte        // WAL buffer
+	bufferMu    sync.Mutex    // Buffer-specific mutex
+	flushSize   int           // Buffer flush size (e.g., 4MB)
+}
+
+type walEntry struct {
+	op, key, value string
 }
 
 func NewFile(config FileConfig) (*File, error) {
@@ -56,7 +61,8 @@ func NewFile(config FileConfig) (*File, error) {
 		data:        make(map[string]string),
 		compactChan: make(chan struct{}, 1),
 		stopChan:    make(chan struct{}),
-		flushSize:   4 * 1024 * 1024, // 4MB buffer
+		walChan:     make(chan walEntry, 1000), // Buffered channel
+		flushSize:   4 * 1024 * 1024,           // 4MB buffer
 	}
 
 	if err := f.loadFromFile(); err != nil {
@@ -69,7 +75,7 @@ func NewFile(config FileConfig) (*File, error) {
 	f.wg.Add(1)
 	go f.compactWorker()
 	f.wg.Add(1)
-	go f.bufferFlushWorker()
+	go f.walWorker()
 
 	return f, nil
 }
@@ -138,7 +144,8 @@ func (f *File) Insert(key string, value interface{}) error {
 		f.data[key] = valStr
 	}
 
-	return f.appendWAL("INSERT", key, valStr)
+	f.walChan <- walEntry{op: "INSERT", key: key, value: valStr}
+	return nil
 }
 
 func (f *File) Get(key string) (interface{}, error) {
@@ -165,21 +172,20 @@ func (f *File) Delete(key string) error {
 	}
 
 	delete(f.data, key)
-	return f.appendWAL("DELETE", key, "")
+	f.walChan <- walEntry{op: "DELETE", key: key, value: ""}
+	return nil
 }
 
-func (f *File) appendWAL(op, key, value string) error {
+func (f *File) appendWAL(entry walEntry) {
 	f.bufferMu.Lock()
 	defer f.bufferMu.Unlock()
 
-	entry := fmt.Sprintf("%s:%s:%s\n", op, key, value)
-	f.buffer = append(f.buffer, []byte(entry)...)
+	logEntry := fmt.Sprintf("%s:%s:%s\n", entry.op, entry.key, entry.value)
+	f.buffer = append(f.buffer, []byte(logEntry)...)
 
 	if len(f.buffer) >= f.flushSize {
 		f.flushBuffer()
 	}
-
-	return nil
 }
 
 func (f *File) flushBuffer() error {
@@ -198,13 +204,13 @@ func (f *File) flushBuffer() error {
 		return fmt.Errorf("failed to sync wal: %v", err)
 	}
 
-	f.buffer = f.buffer[:0] // Clear buffer
+	f.buffer = f.buffer[:0]
 	return nil
 }
 
-func (f *File) bufferFlushWorker() {
+func (f *File) walWorker() {
 	defer f.wg.Done()
-	ticker := time.NewTicker(1 * time.Second) // Flush every 1 second
+	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
 
 	for {
@@ -214,6 +220,8 @@ func (f *File) bufferFlushWorker() {
 			f.flushBuffer()
 			f.bufferMu.Unlock()
 			return
+		case entry := <-f.walChan:
+			f.appendWAL(entry)
 		case <-ticker.C:
 			f.bufferMu.Lock()
 			f.flushBuffer()
@@ -272,6 +280,7 @@ func (f *File) compact() error {
 
 func (f *File) Close() error {
 	close(f.stopChan)
+	close(f.walChan) // Stop WAL worker
 	f.wg.Wait()
 
 	f.bufferMu.Lock()
