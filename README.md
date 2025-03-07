@@ -67,8 +67,7 @@ GoLite/
 │   │   └── storage.go    # 저장소 인터페이스 (B-트리, LSM 등 추상화)
 │   ├── adapters/         # 헥사고날 어댑터 (외부 시스템 연결)
 │   │   ├── btree/        # B-트리 어댑터 (SQLite 1.0 기반)
-│   │   │   ├── btree.go  # B-트리 구현
-│   │   │   └── disk.go   # 디스크 I/O 처리
+│   │   │   └── btree.go  # B-트리 구현, 디스크 I/O 처리
 │   │   └── file/         # 파일 시스템 어댑터
 │   │       └── file.go   # 파일 읽기/쓰기 구현
 │   ├── application/      # 애플리케이션 로직 (CQRS 및 이벤트 핸들링)
