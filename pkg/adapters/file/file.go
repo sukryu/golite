@@ -140,3 +140,7 @@ func (f *File) Close() error {
 	}
 	return f.file.Close()
 }
+
+func (f *File) File() *os.File {
+	return f.file
+}

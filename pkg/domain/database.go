@@ -16,9 +16,10 @@ import (
 type DatabaseConfig struct {
 	Name       string         // Database name (like K8s resource name)
 	FilePath   string         // File path for persistence
-	BtConfig   btree.BtConfig // B-tree configuration
+	BtConfig   btree.BtConfig // B-tree specific config, optional for other adapters
 	MaxTables  int            // Maximum number of tables (resource limit)
 	ThreadSafe bool           // Enable thread safety
+	UsePages   bool           // Flag to indicate if page-based storage is used
 }
 
 // DatabaseSpec defines the desired state of a Database, K8s-style.
@@ -49,8 +50,8 @@ type TableSpec struct {
 	Name string // Table name
 }
 
-// NewDatabase creates a new Database instance with production-ready features.
-func NewDatabase(config DatabaseConfig, logger utils.Logger) (*Database, error) {
+// NewDatabaseWithStorage creates a new Database instance with a custom storage adapter.
+func NewDatabaseWithStorage(config DatabaseConfig, storage ports.StoragePort, file *os.File, logger utils.Logger) (*Database, error) {
 	if config.Name == "" || config.FilePath == "" {
 		return nil, fmt.Errorf("database name and file path are required")
 	}
@@ -58,20 +59,6 @@ func NewDatabase(config DatabaseConfig, logger utils.Logger) (*Database, error) 
 		config.MaxTables = 100
 	}
 
-	file, err := os.OpenFile(config.FilePath, os.O_RDWR|os.O_CREATE, 0666)
-	if err != nil {
-		return nil, fmt.Errorf("failed to open database file: %v", err)
-	}
-
-	// Ensure file is at least 2 pages long (B-tree header + Database metadata)
-	minSize := int64(config.BtConfig.PageSize * 2)
-	if stat, err := file.Stat(); err == nil && stat.Size() < minSize {
-		if err := file.Truncate(minSize); err != nil {
-			return nil, fmt.Errorf("failed to extend file to %d bytes: %v", minSize, err)
-		}
-	}
-
-	storage := btree.NewBtree(file, config.BtConfig)
 	db := &Database{
 		config:  config,
 		spec:    DatabaseSpec{Tables: make(map[string]*TableSpec)},
@@ -81,26 +68,49 @@ func NewDatabase(config DatabaseConfig, logger utils.Logger) (*Database, error) 
 		logger:  logger,
 	}
 
+	if config.UsePages {
+		// Ensure file is at least 2 pages long for page-based storage
+		minSize := int64(config.BtConfig.PageSize * 2)
+		if stat, err := file.Stat(); err == nil && stat.Size() < minSize {
+			if err := file.Truncate(minSize); err != nil {
+				return nil, fmt.Errorf("failed to extend file to %d bytes: %v", minSize, err)
+			}
+		}
+	}
+
 	if err := db.loadHeader(); err != nil {
 		db.logger.Warn(fmt.Sprintf("failed to load header, initializing new: %v", err))
 		if err := db.saveHeader(); err != nil {
 			return nil, err
 		}
 	}
-	logger.Info(fmt.Sprintf("Database %s initialized with file %s", config.Name, config.FilePath))
 	return db, nil
+}
+
+// NewDatabase creates a new Database instance with the default B-tree storage.
+func NewDatabase(config DatabaseConfig, logger utils.Logger) (*Database, error) {
+	config.UsePages = true // B-tree uses pages by default
+	file, err := os.OpenFile(config.FilePath, os.O_RDWR|os.O_CREATE, 0666)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open database file: %v", err)
+	}
+	storage := btree.NewBtree(file, config.BtConfig)
+	return NewDatabaseWithStorage(config, storage, file, logger)
 }
 
 // loadHeader reads table metadata from page 1 (B-tree uses page 0).
 func (db *Database) loadHeader() error {
+	if !db.config.UsePages {
+		return nil // No header for non-page-based storage
+	}
 	data := make([]byte, db.config.BtConfig.PageSize)
-	n, err := db.file.ReadAt(data, int64(db.config.BtConfig.PageSize)) // Page 1
+	n, err := db.file.ReadAt(data, int64(db.config.BtConfig.PageSize))
 	if err != nil && err.Error() != "EOF" {
 		return fmt.Errorf("failed to read header at offset %d: %v", db.config.BtConfig.PageSize, err)
 	}
 	if n == 0 || (err != nil && err.Error() == "EOF") {
 		db.logger.Info("No header data found, assuming new database")
-		return nil // New file, no tables yet
+		return nil
 	}
 
 	buf := bytes.NewReader(data)
@@ -132,6 +142,9 @@ func (db *Database) loadHeader() error {
 
 // saveHeader writes table metadata to page 1.
 func (db *Database) saveHeader() error {
+	if !db.config.UsePages {
+		return nil // No header for non-page-based storage
+	}
 	buf := bytes.NewBuffer(make([]byte, 0, db.config.BtConfig.PageSize))
 
 	if err := binary.Write(buf, binary.LittleEndian, uint32(len(db.spec.Tables))); err != nil {
@@ -153,7 +166,7 @@ func (db *Database) saveHeader() error {
 	}
 	padded := make([]byte, db.config.BtConfig.PageSize)
 	copy(padded, data)
-	_, err := db.file.WriteAt(padded, int64(db.config.BtConfig.PageSize)) // Page 1
+	_, err := db.file.WriteAt(padded, int64(db.config.BtConfig.PageSize))
 	if err != nil {
 		return fmt.Errorf("failed to write header: %v", err)
 	}
