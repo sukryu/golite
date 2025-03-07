@@ -675,7 +675,9 @@ func (b *Btree) cacheNode(n *Node) {
 
 	// If node is already in cache, update it and move to front
 	if cached, ok := b.cache[n.offset]; ok {
-		b.cacheList.MoveToFront(cached.elem)
+		if cached.elem != nil { // check for nil elem
+			b.cacheList.MoveToFront(cached.elem)
+		}
 		b.cache[n.offset] = n // Update with latest node data
 		return
 	}
@@ -701,7 +703,7 @@ func (b *Btree) cacheNode(n *Node) {
 func (b *Btree) moveToFront(offset int64) {
 	b.cacheMu.Lock()
 	defer b.cacheMu.Unlock()
-	if elem, ok := b.cache[offset]; ok {
+	if elem, ok := b.cache[offset]; ok && elem.elem != nil { // Additional nil check
 		b.cacheList.MoveToFront(elem.elem)
 	}
 }

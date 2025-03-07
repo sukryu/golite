@@ -1,10 +1,13 @@
 package file
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 	"sync"
+	"time"
 
 	"github.com/sukryu/GoLite/pkg/ports"
 )
@@ -17,10 +20,18 @@ type FileConfig struct {
 }
 
 type File struct {
-	config FileConfig
-	file   *os.File
-	data   map[string]string
-	mu     sync.RWMutex
+	config      FileConfig
+	file        *os.File
+	walFile     *os.File
+	data        map[string]string
+	mu          sync.RWMutex
+	walMu       sync.Mutex
+	compactChan chan struct{}
+	stopChan    chan struct{}
+	wg          sync.WaitGroup
+	buffer      []byte     // WAL buffer
+	bufferMu    sync.Mutex // Buffer-specific mutex
+	flushSize   int        // Buffer flush size (e.g., 4MB)
 }
 
 func NewFile(config FileConfig) (*File, error) {
@@ -30,20 +41,35 @@ func NewFile(config FileConfig) (*File, error) {
 
 	file, err := os.OpenFile(config.FilePath, os.O_RDWR|os.O_CREATE, 0666)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open file: %v", err)
+		return nil, fmt.Errorf("failed to open main file: %v", err)
+	}
+
+	walFile, err := os.OpenFile(config.FilePath+".wal", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open wal file: %v", err)
 	}
 
 	f := &File{
-		config: config,
-		file:   file,
-		data:   make(map[string]string),
+		config:      config,
+		file:        file,
+		walFile:     walFile,
+		data:        make(map[string]string),
+		compactChan: make(chan struct{}, 1),
+		stopChan:    make(chan struct{}),
+		flushSize:   4 * 1024 * 1024, // 4MB buffer
 	}
 
 	if err := f.loadFromFile(); err != nil {
-		if err := f.saveToFile(); err != nil {
-			return nil, fmt.Errorf("failed to initialize file: %v", err)
-		}
+		return nil, fmt.Errorf("failed to load main file: %v", err)
 	}
+	if err := f.loadFromWAL(); err != nil {
+		return nil, fmt.Errorf("failed to load wal file: %v", err)
+	}
+
+	f.wg.Add(1)
+	go f.compactWorker()
+	f.wg.Add(1)
+	go f.bufferFlushWorker()
 
 	return f, nil
 }
@@ -65,41 +91,54 @@ func (f *File) loadFromFile() error {
 		return fmt.Errorf("failed to read file: %v", err)
 	}
 
-	if err := json.Unmarshal(data, &f.data); err != nil {
-		return fmt.Errorf("failed to unmarshal data: %v", err)
-	}
-	return nil
+	return json.Unmarshal(data, &f.data)
 }
 
-func (f *File) saveToFile() error {
-	data, err := json.Marshal(f.data)
+func (f *File) loadFromWAL() error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	stat, err := f.walFile.Stat()
 	if err != nil {
-		return fmt.Errorf("failed to marshal data: %v", err)
+		return fmt.Errorf("failed to stat wal file: %v", err)
+	}
+	if stat.Size() == 0 {
+		return nil
 	}
 
-	if err := os.WriteFile(f.config.FilePath, data, 0666); err != nil {
-		return fmt.Errorf("failed to write file: %v", err)
+	scanner := bufio.NewScanner(f.walFile)
+	for scanner.Scan() {
+		line := scanner.Text()
+		parts := strings.SplitN(line, ":", 3)
+		if len(parts) < 3 {
+			continue
+		}
+		op, key, value := parts[0], parts[1], parts[2]
+		switch op {
+		case "INSERT":
+			f.data[key] = value
+		case "DELETE":
+			delete(f.data, key)
+		}
 	}
-
-	if err := f.file.Sync(); err != nil {
-		return fmt.Errorf("failed to sync file: %v", err)
-	}
-	return nil
+	return scanner.Err()
 }
 
 func (f *File) Insert(key string, value interface{}) error {
-	if f.config.ThreadSafe {
-		f.mu.Lock()
-		defer f.mu.Unlock()
-	}
-
 	valStr, ok := value.(string)
 	if !ok {
 		return fmt.Errorf("value must be string")
 	}
 
-	f.data[key] = valStr
-	return f.saveToFile() // No additional lock here
+	if f.config.ThreadSafe {
+		f.mu.Lock()
+		f.data[key] = valStr
+		f.mu.Unlock()
+	} else {
+		f.data[key] = valStr
+	}
+
+	return f.appendWAL("INSERT", key, valStr)
 }
 
 func (f *File) Get(key string) (interface{}, error) {
@@ -126,21 +165,125 @@ func (f *File) Delete(key string) error {
 	}
 
 	delete(f.data, key)
-	return f.saveToFile() // No additional lock here
+	return f.appendWAL("DELETE", key, "")
+}
+
+func (f *File) appendWAL(op, key, value string) error {
+	f.bufferMu.Lock()
+	defer f.bufferMu.Unlock()
+
+	entry := fmt.Sprintf("%s:%s:%s\n", op, key, value)
+	f.buffer = append(f.buffer, []byte(entry)...)
+
+	if len(f.buffer) >= f.flushSize {
+		f.flushBuffer()
+	}
+
+	return nil
+}
+
+func (f *File) flushBuffer() error {
+	f.walMu.Lock()
+	defer f.walMu.Unlock()
+
+	if len(f.buffer) == 0 {
+		return nil
+	}
+
+	_, err := f.walFile.Write(f.buffer)
+	if err != nil {
+		return fmt.Errorf("failed to write to wal: %v", err)
+	}
+	if err := f.walFile.Sync(); err != nil {
+		return fmt.Errorf("failed to sync wal: %v", err)
+	}
+
+	f.buffer = f.buffer[:0] // Clear buffer
+	return nil
+}
+
+func (f *File) bufferFlushWorker() {
+	defer f.wg.Done()
+	ticker := time.NewTicker(1 * time.Second) // Flush every 1 second
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-f.stopChan:
+			f.bufferMu.Lock()
+			f.flushBuffer()
+			f.bufferMu.Unlock()
+			return
+		case <-ticker.C:
+			f.bufferMu.Lock()
+			f.flushBuffer()
+			f.bufferMu.Unlock()
+		}
+	}
+}
+
+func (f *File) compactWorker() {
+	defer f.wg.Done()
+	ticker := time.NewTicker(10 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-f.stopChan:
+			return
+		case <-f.compactChan:
+			f.compact()
+		case <-ticker.C:
+			f.compact()
+		}
+	}
+}
+
+func (f *File) compact() error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	data, err := json.Marshal(f.data)
+	if err != nil {
+		return fmt.Errorf("failed to marshal data: %v", err)
+	}
+
+	if err := os.WriteFile(f.config.FilePath, data, 0666); err != nil {
+		return fmt.Errorf("failed to write file: %v", err)
+	}
+	if err := f.file.Sync(); err != nil {
+		return fmt.Errorf("failed to sync file: %v", err)
+	}
+
+	f.walMu.Lock()
+	defer f.walMu.Unlock()
+	if err := f.walFile.Truncate(0); err != nil {
+		return fmt.Errorf("failed to truncate wal: %v", err)
+	}
+	if _, err := f.walFile.Seek(0, 0); err != nil {
+		return fmt.Errorf("failed to reset wal: %v", err)
+	}
+	if err := f.walFile.Sync(); err != nil {
+		return fmt.Errorf("failed to sync wal: %v", err)
+	}
+
+	return nil
 }
 
 func (f *File) Close() error {
-	if f.config.ThreadSafe {
-		f.mu.Lock()
-		defer f.mu.Unlock()
-	}
+	close(f.stopChan)
+	f.wg.Wait()
 
-	if err := f.saveToFile(); err != nil {
+	f.bufferMu.Lock()
+	f.flushBuffer() // Flush any remaining buffer
+	f.bufferMu.Unlock()
+
+	if err := f.compact(); err != nil {
 		return err
 	}
-	return f.file.Close()
-}
 
-func (f *File) File() *os.File {
-	return f.file
+	if err := f.file.Close(); err != nil {
+		return err
+	}
+	return f.walFile.Close()
 }

@@ -49,6 +49,7 @@ func TestFileBasicOperations(t *testing.T) {
 func TestFileConcurrency(t *testing.T) {
 	filePath := "file_test_concurrency.db"
 	defer os.Remove(filePath)
+	defer os.Remove(filePath + ".wal") // Clean up WAL file
 
 	config := file.FileConfig{
 		FilePath:   filePath,
@@ -58,7 +59,6 @@ func TestFileConcurrency(t *testing.T) {
 	assert.NoError(t, err, "NewFile should succeed")
 	defer f.Close()
 
-	// Concurrent inserts
 	var wg sync.WaitGroup
 	numGoroutines := 10
 	wg.Add(numGoroutines)
@@ -71,7 +71,7 @@ func TestFileConcurrency(t *testing.T) {
 			assert.NoError(t, err, "Concurrent Insert should succeed for %s", key)
 		}(i)
 	}
-	wg.Wait()
+	wg.Wait() // Ensure all inserts complete before verification
 
 	// Verify all keys
 	for i := 0; i < numGoroutines; i++ {
