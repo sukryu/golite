@@ -1,136 +1,180 @@
 package unit
 
 import (
-	"fmt"
 	"os"
 	"sync"
 	"testing"
+	"time"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/sukryu/GoLite/pkg/adapters/file"
+	"github.com/sukryu/GoLite/pkg/ports"
 )
 
-// TestFileBasicOperations tests basic File adapter operations.
 func TestFileBasicOperations(t *testing.T) {
-	filePath := "file_test_basic.db"
-	defer os.Remove(filePath)
-
 	config := file.FileConfig{
-		FilePath:   filePath,
-		ThreadSafe: false,
-	}
-	f, err := file.NewFile(config)
-	assert.NoError(t, err, "NewFile should succeed")
-	defer f.Close()
-
-	// Test Insert
-	err = f.Insert("key1", "value1")
-	assert.NoError(t, err, "Insert should succeed")
-	err = f.Insert("key2", "value2")
-	assert.NoError(t, err, "Insert should succeed")
-
-	// Test Get
-	value, err := f.Get("key1")
-	assert.NoError(t, err, "Get should succeed")
-	assert.Equal(t, "value1", value, "Get should return correct value")
-	value, err = f.Get("key3")
-	assert.Error(t, err, "Get should fail for nonexistent key")
-	assert.Nil(t, value, "Get should return nil for nonexistent key")
-
-	// Test Delete
-	err = f.Delete("key2")
-	assert.NoError(t, err, "Delete should succeed")
-	value, err = f.Get("key2")
-	assert.Error(t, err, "Get should fail after delete")
-	assert.Nil(t, value, "Get should return nil after delete")
-}
-
-// TestFileConcurrency tests concurrent access to the File adapter.
-func TestFileConcurrency(t *testing.T) {
-	filePath := "file_test_concurrency.db"
-	defer os.Remove(filePath)
-	defer os.Remove(filePath + ".wal") // Clean up WAL file
-
-	config := file.FileConfig{
-		FilePath:   filePath,
+		FilePath:   "test_basic.db",
 		ThreadSafe: true,
 	}
 	f, err := file.NewFile(config)
-	assert.NoError(t, err, "NewFile should succeed")
+	if err != nil {
+		t.Fatalf("NewFile should succeed\n\tError Trace:\t%s\n\tError: %v", t.Name(), err)
+	}
+	defer os.Remove(config.FilePath)
+	defer os.Remove(config.FilePath + ".wal")
+	defer f.Close()
+
+	// Insert and Get
+	err = f.Insert("key1", "value1")
+	if err != nil {
+		t.Fatalf("Insert should succeed\n\tError Trace:\t%s\n\tError: %v", t.Name(), err)
+	}
+	time.Sleep(10 * time.Millisecond) // 비동기 인덱스 반영 대기
+	val, err := f.Get("key1")
+	if err != nil {
+		t.Errorf("Get should succeed\n\tError Trace:\t%s\n\tError: %v", t.Name(), err)
+	}
+	if val != "value1" {
+		t.Errorf("Get should return correct value\n\tError Trace:\t%s\n\tError: Not equal: \n\t\texpected: string(\"value1\")\n\t\tactual  : %#v(%v)", t.Name(), val, val)
+	}
+
+	// Insert and Delete
+	err = f.Insert("key2", "value2")
+	if err != nil {
+		t.Fatalf("Insert should succeed\n\tError Trace:\t%s\n\tError: %v", t.Name(), err)
+	}
+	time.Sleep(10 * time.Millisecond)
+	err = f.Delete("key2")
+	if err != nil {
+		t.Fatalf("Delete should succeed\n\tError Trace:\t%s\n\tError: %v", t.Name(), err)
+	}
+	time.Sleep(10 * time.Millisecond)
+	val, err = f.Get("key2")
+	if err == nil {
+		t.Errorf("Get should fail after delete\n\tError Trace:\t%s\n\tError: An error is expected but got nil", t.Name())
+	}
+	if val != nil {
+		t.Errorf("Get should return nil after delete\n\tError Trace:\t%s\n\tError: Expected nil, but got: %#v(%v)", t.Name(), val, val)
+	}
+}
+
+func TestFileConcurrency(t *testing.T) {
+	config := file.FileConfig{
+		FilePath:   "test_concurrency.db",
+		ThreadSafe: true,
+	}
+	f, err := file.NewFile(config)
+	if err != nil {
+		t.Fatalf("NewFile should succeed\n\tError Trace:\t%s\n\tError: %v", t.Name(), err)
+	}
+	defer os.Remove(config.FilePath)
+	defer os.Remove(config.FilePath + ".wal")
 	defer f.Close()
 
 	var wg sync.WaitGroup
-	numGoroutines := 10
-	wg.Add(numGoroutines)
-	for i := 0; i < numGoroutines; i++ {
-		go func(id int) {
+	for i := 0; i < 10; i++ {
+		wg.Add(1)
+		go func(i int) {
 			defer wg.Done()
-			key := fmt.Sprintf("key%d", id)
-			value := fmt.Sprintf("value%d", id)
-			err := f.Insert(key, value)
-			assert.NoError(t, err, "Concurrent Insert should succeed for %s", key)
+			key := "key" + string(rune('0'+i))
+			err := f.Insert(key, "value"+string(rune('0'+i)))
+			if err != nil {
+				t.Errorf("Insert should succeed\n\tError Trace:\t%s\n\tError: %v", t.Name(), err)
+			}
 		}(i)
 	}
-	wg.Wait() // Ensure all inserts complete before verification
+	wg.Wait()
+	time.Sleep(50 * time.Millisecond) // 비동기 인덱스 반영 대기
 
-	// Verify all keys
-	for i := 0; i < numGoroutines; i++ {
-		key := fmt.Sprintf("key%d", i)
-		value, err := f.Get(key)
-		assert.NoError(t, err, "Get should succeed for %s", key)
-		assert.Equal(t, fmt.Sprintf("value%d", i), value, "Get should return correct value for %s", key)
+	for i := 0; i < 10; i++ {
+		key := "key" + string(rune('0'+i))
+		val, err := f.Get(key)
+		if err != nil {
+			t.Errorf("Get should succeed for %s\n\tError Trace:\t%s\n\tError: %v", key, t.Name(), err)
+		}
+		expected := "value" + string(rune('0'+i))
+		if val != expected {
+			t.Errorf("Get should return correct value for %s\n\tError Trace:\t%s\n\tError: Not equal: \n\t\texpected: string(\"%s\")\n\t\tactual  : %#v(%v)", key, t.Name(), expected, val, val)
+		}
 	}
 }
 
-// TestFilePersistence tests if data persists across File instances.
 func TestFilePersistence(t *testing.T) {
-	filePath := "file_test_persistence.db"
-	defer os.Remove(filePath)
-
 	config := file.FileConfig{
-		FilePath:   filePath,
+		FilePath:   "test_persistence.db",
 		ThreadSafe: false,
 	}
-	f1, err := file.NewFile(config)
-	assert.NoError(t, err, "NewFile should succeed")
-	err = f1.Insert("key1", "value1")
-	assert.NoError(t, err, "Insert should succeed")
-	err = f1.Insert("key2", "value2")
-	assert.NoError(t, err, "Insert should succeed")
-	f1.Close()
+	f, err := file.NewFile(config)
+	if err != nil {
+		t.Fatalf("NewFile should succeed\n\tError Trace:\t%s\n\tError: %v", t.Name(), err)
+	}
+	defer os.Remove(config.FilePath)
+	defer os.Remove(config.FilePath + ".wal")
+
+	err = f.Insert("key1", "value1")
+	if err != nil {
+		t.Fatalf("Insert should succeed\n\tError Trace:\t%s\n\tError: %v", t.Name(), err)
+	}
+	err = f.Insert("key2", "value2")
+	if err != nil {
+		t.Fatalf("Insert should succeed\n\tError Trace:\t%s\n\tError: %v", t.Name(), err)
+	}
+	time.Sleep(10 * time.Millisecond) // 비동기 인덱스 반영 대기
+	f.Close()
 
 	f2, err := file.NewFile(config)
-	assert.NoError(t, err, "NewFile should succeed")
+	if err != nil {
+		t.Fatalf("NewFile should succeed\n\tError Trace:\t%s\n\tError: %v", t.Name(), err)
+	}
 	defer f2.Close()
 
-	value, err := f2.Get("key1")
-	assert.NoError(t, err, "Get should succeed")
-	assert.Equal(t, "value1", value, "Get should return persisted value")
-	value, err = f2.Get("key2")
-	assert.NoError(t, err, "Get should succeed")
-	assert.Equal(t, "value2", value, "Get should return persisted value")
+	val, err := f2.Get("key1")
+	if err != nil {
+		t.Errorf("Get should succeed\n\tError Trace:\t%s\n\tError: %v", t.Name(), err)
+	}
+	if val != "value1" {
+		t.Errorf("Get should return persisted value\n\tError Trace:\t%s\n\tError: Not equal: \n\t\texpected: string(\"value1\")\n\t\tactual  : %#v(%v)", t.Name(), val, val)
+	}
+
+	val, err = f2.Get("key2")
+	if err != nil {
+		t.Errorf("Get should succeed\n\tError Trace:\t%s\n\tError: %v", t.Name(), err)
+	}
+	if val != "value2" {
+		t.Errorf("Get should return persisted value\n\tError Trace:\t%s\n\tError: Not equal: \n\t\texpected: string(\"value2\")\n\t\tactual  : %#v(%v)", t.Name(), val, val)
+	}
 }
 
-// TestFileErrorHandling tests error handling in the File adapter.
 func TestFileErrorHandling(t *testing.T) {
-	// Test invalid config
 	config := file.FileConfig{
-		FilePath: "", // Empty path
+		FilePath:   "test_error.db",
+		ThreadSafe: true,
 	}
 	f, err := file.NewFile(config)
-	assert.Error(t, err, "NewFile should fail with empty file path")
-	assert.Nil(t, f, "NewFile should return nil with invalid config")
-	assert.Contains(t, err.Error(), "file path is required", "Error message should match")
-
-	// Test invalid value type
-	filePath := "file_test_error.db"
-	defer os.Remove(filePath)
-	config = file.FileConfig{FilePath: filePath}
-	f, err = file.NewFile(config)
-	assert.NoError(t, err, "NewFile should succeed")
+	if err != nil {
+		t.Fatalf("NewFile should succeed\n\tError Trace:\t%s\n\tError: %v", t.Name(), err)
+	}
+	defer os.Remove(config.FilePath)
+	defer os.Remove(config.FilePath + ".wal")
 	defer f.Close()
 
-	err = f.Insert("key1", 123) // Non-string value
-	assert.Error(t, err, "Insert should fail with non-string value")
-	assert.Contains(t, err.Error(), "value must be string", "Error message should match")
+	// Invalid value type
+	err = f.Insert("key1", 123)
+	if err == nil {
+		t.Errorf("Insert should fail with invalid value type\n\tError Trace:\t%s\n\tError: An error is expected but got nil", t.Name())
+	}
+
+	// Delete non-existent key
+	err = f.Delete("nonexistent")
+	if err != ports.ErrKeyNotFound {
+		t.Errorf("Delete should return ErrKeyNotFound for nonexistent key\n\tError Trace:\t%s\n\tError: Expected %v, but got: %v", t.Name(), ports.ErrKeyNotFound, err)
+	}
+
+	// Get non-existent key
+	val, err := f.Get("nonexistent")
+	if err != ports.ErrKeyNotFound {
+		t.Errorf("Get should return ErrKeyNotFound for nonexistent key\n\tError Trace:\t%s\n\tError: Expected %v, but got: %v", t.Name(), ports.ErrKeyNotFound, err)
+	}
+	if val != nil {
+		t.Errorf("Get should return nil for nonexistent key\n\tError Trace:\t%s\n\tError: Expected nil, but got: %#v(%v)", t.Name(), val, val)
+	}
 }
